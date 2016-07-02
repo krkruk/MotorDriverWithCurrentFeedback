@@ -1,0 +1,121 @@
+
+#include <stdio.h>
+const int THROTTLE = A0;
+const int CURRENT_READ = A7;
+const short CURRENT_LOWER_LIMIT_AMP = 20;                                          //[A]
+const short CURRENT_UPPER_LIMIT_AMP = 30;                                          //[A]
+const int MOTOR_MAX_CURRENT_AMP = 240;                                             //[A]
+const float MOTOR_CURRENT_PER_PERCENT = MOTOR_MAX_CURRENT_AMP * 0.01;              //[A/%]
+const float MOTOR_CURRENT_PER_PERCENT_REVERSED = 1 / MOTOR_CURRENT_PER_PERCENT;    //[%/A]
+const short ADC_SAMPLING = 1024-1;
+const float ADC_MAX_VOLTAGE = 5.0;
+volatile uint8_t &MOTOR_PWM = OCR0A;
+const int PWM_SAMPLING_RANGE = 255;
+char buffer[40];
+float percentage_pwm = 0;
+
+float convert_volts_to_amps(int adc_volts)
+{
+   /*
+   *  f(0.5V) = -20A
+   *  f(4.5V) = 20A
+   *  f(U) = 10*U - 25 [A]
+  */ 
+  
+  return 10 * adc_volts - 25;
+}
+
+float convert_adc_to_volts(int adc, float adc_voltage = ADC_MAX_VOLTAGE)
+{
+  /*
+  * Converts adc value into voltage based on ADC_SAMPLING constant
+  */
+  
+  return (adc * adc_voltage) / ADC_SAMPLING;
+}
+
+float convert_throttle_volts_to_current(int adc_volts, int current_limit = CURRENT_UPPER_LIMIT_AMP)
+{
+  /*
+  * Converts volts (given the adc limit) to current based on the current limit so
+  * a whole potentiometer range can be utilized to set the PWM.
+  */
+  return adc_volts * current_limit / ADC_MAX_VOLTAGE;
+}
+
+float compute_overcurrent_pwm(float current)
+{
+  /*
+  * Compute overcurrent and return a percentage of PWM
+  * that needs to be reduced.
+  * current - total sensored current
+  * return value - percentage of PWM that should be substracted
+  *                from the 100%
+  */
+  int overcurrent = current - CURRENT_UPPER_LIMIT_AMP;
+  return overcurrent * MOTOR_CURRENT_PER_PERCENT_REVERSED;
+}
+
+float compute_current_pwm(float current)
+{
+  /*
+  * Compute percentage of PWM at given current knowing that
+  * the current cannot be exceeded (compared to the max value).
+  */
+   return current * MOTOR_CURRENT_PER_PERCENT_REVERSED;
+}
+
+int convert_percentage_to_pwm(float percentage)
+{
+  /*
+  * Converts PWM in percentage to PWM in range of the given
+  * PWM.
+  * User needs to set PWM_SAMPLING_RANGE to 255 or (2^16)-1.
+  */
+  return percentage * PWM_SAMPLING_RANGE;
+}
+
+void pwm_init()
+{
+  /*
+  * Inits PWM:
+  * Prescaler 1
+  * @PD6
+  * FastPWM
+  * Initial value: 0
+  */
+  DDRD |= 1<<PD6 | 1<<PD5;
+  TCCR0A |= 1<<COM0A1 | 1<<WGM01 | 1<<WGM00;
+  TCCR0B |= 1<<CS00;
+  MOTOR_PWM = 0;
+}
+
+void setup()
+{
+  Serial.begin(9600);
+  pwm_init();
+}
+
+void loop()
+{
+  int throttle_adc = analogRead(THROTTLE);                                      //0-1023
+  int current_adc_voltage_read = analogRead(CURRENT_READ);                      //0-1023
+  float current_in_voltage = convert_adc_to_volts(current_adc_voltage_read);
+  float current = convert_volts_to_amps(current_in_voltage);
+  
+  if(current > CURRENT_UPPER_LIMIT_AMP)
+    percentage_pwm = 100.0 - compute_overcurrent_pwm(current);
+  else
+  {
+      float throttle_volts = convert_adc_to_volts(throttle_adc);
+      float throttle_current = convert_throttle_volts_to_current(throttle_volts);
+      percentage_pwm = compute_current_pwm(throttle_current);
+  }
+    
+  MOTOR_PWM = convert_percentage_to_pwm(percentage_pwm);
+  delay(10);
+  
+  sprintf(buffer, "%d,%d,%d,%d", throttle_adc, current_adc_voltage_read, current_in_voltage*1000, 1000*current);                        //0-1024, mA
+  Serial.println(buffer);
+
+}
