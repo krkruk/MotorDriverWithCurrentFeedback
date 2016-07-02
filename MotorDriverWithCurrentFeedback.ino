@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <math.h>
 const int THROTTLE = A0;
 const int CURRENT_READ = A7;
 const float CURRENT_LOWER_LIMIT_AMP = 15.0f;                                       //[A]
@@ -130,7 +131,7 @@ void loop()
   {    
     float decimal = convert_pwm_to_decimal(MOTOR_PWM);
     float overcurrent_decimal = compute_overcurrent_pwm_decimal(current);
-    decimal_pwm = decimal - overcurrent_decimal;
+    decimal_pwm = abs(decimal - overcurrent_decimal);
   }
   else
   {
