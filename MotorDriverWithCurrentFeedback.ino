@@ -15,7 +15,7 @@ const float PWM_SAMPLING_RANGE = 255.0f;
 char buffer[40];
 float decimal_pwm = 0.0f;
 
-float convert_volts_to_amps(int adc_volts)
+float convert_volts_to_amps(float adc_volts)
 {
    /*
    *  f(0.5V) = -20A
@@ -125,7 +125,7 @@ void loop()
   int throttle_adc = analogRead(THROTTLE);                                      //0-1023
   int current_adc_voltage_read = analogRead(CURRENT_READ);                      //0-1023
   float current_in_voltage = convert_adc_to_volts(current_adc_voltage_read);
-  float current = convert_volts_to_amps(current_in_voltage);
+  double current = convert_volts_to_amps(current_in_voltage);
   
   if(current > CURRENT_UPPER_LIMIT_AMP)
   {    
@@ -135,7 +135,7 @@ void loop()
   }
   else
   {
-    if(current < -5.0f)
+    if(current < -1.0f)
       decimal_pwm = 0.0f;
      else
        decimal_pwm = convert_throttle_adc_to_decimal(throttle_adc);
